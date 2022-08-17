@@ -36,6 +36,8 @@ export default class UIStore extends BaseStore {
     @observable is_account_signup_modal_visible = false;
     @observable is_set_residence_modal_visible = false;
     @observable is_reset_password_modal_visible = false;
+    @observable is_reset_email_modal_visible = false;
+    @observable is_update_email_modal_visible = false;
     @observable is_reset_trading_password_modal_visible = false;
     // @observable is_purchase_lock_on       = false;
 
@@ -78,8 +80,11 @@ export default class UIStore extends BaseStore {
     // Welcome modal
     @observable is_welcome_modal_visible = false;
 
-    // Remove MX gaming account modal
+    // Remove MX & MLT
     @observable is_close_mx_mlt_account_modal_visible = false;
+
+    // Remove MF account modal
+    @observable is_close_uk_account_modal_visible = false;
 
     // set currency modal
     @observable is_set_currency_modal_visible = false;
@@ -136,6 +141,8 @@ export default class UIStore extends BaseStore {
 
     // add crypto accounts
     @observable should_show_cancel = false;
+
+    @observable is_deriv_account_needed_modal_visible = false;
 
     getDurationFromUnit = unit => this[`duration_${unit}`];
 
@@ -231,6 +238,11 @@ export default class UIStore extends BaseStore {
     @action.bound
     showCloseMxMltAccountPopup(is_open) {
         this.is_close_mx_mlt_account_modal_visible = is_open;
+    }
+
+    @action.bound
+    showCloseUKAccountPopup(is_open) {
+        this.is_close_uk_account_modal_visible = is_open;
     }
 
     @computed
@@ -515,6 +527,16 @@ export default class UIStore extends BaseStore {
     }
 
     @action.bound
+    toggleResetEmailModal(state_change = !this.is_reset_email_modal_visible) {
+        this.is_reset_email_modal_visible = state_change;
+    }
+
+    @action.bound
+    toggleUpdateEmailModal(state_change = !this.is_update_email_modal_visible) {
+        this.is_update_email_modal_visible = state_change;
+    }
+
+    @action.bound
     setResetTradingPasswordModalOpen(is_reset_trading_password_modal_visible) {
         this.is_reset_trading_password_modal_visible = is_reset_trading_password_modal_visible;
     }
@@ -647,5 +669,10 @@ export default class UIStore extends BaseStore {
         if (this.choose_crypto_currency_target === routes.cashier_deposit) {
             this.root_store.modules.cashier.general_store.setIsDeposit(true);
         }
+    }
+
+    @action.bound
+    openDerivRealAccountNeededModal() {
+        this.is_deriv_account_needed_modal_visible = !this.is_deriv_account_needed_modal_visible;
     }
 }

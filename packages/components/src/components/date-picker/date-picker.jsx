@@ -22,6 +22,7 @@ const DatePicker = React.memo(props => {
         mode,
         max_date,
         min_date,
+        start_date,
         name,
         onBlur,
         onChange,
@@ -31,6 +32,7 @@ const DatePicker = React.memo(props => {
         required,
         type,
         value,
+        data_testid,
         ...other_props
     } = props;
 
@@ -164,7 +166,7 @@ const DatePicker = React.memo(props => {
     const getInputValue = () => (mode === 'duration' ? duration : date);
 
     const getCalendarValue = new_date => {
-        if (!new_date) return isMobile() ? null : toMoment(max_date).format(date_format);
+        if (!new_date) return isMobile() ? null : toMoment(start_date || max_date).format(date_format);
         return convertDateFormat(new_date, display_format, date_format);
     };
 
@@ -201,6 +203,7 @@ const DatePicker = React.memo(props => {
                     placeholder={placeholder}
                     value={getCalendarValue(date)} // native picker accepts date format yyyy-mm-dd
                     disabled={disabled}
+                    data_testid={data_testid}
                     {...common_props}
                 />
             </MobileWrapper>
@@ -219,6 +222,7 @@ const DatePicker = React.memo(props => {
                             required={required}
                             type={type}
                             value={getInputValue()}
+                            data-testid={data_testid}
                         />
                         <Calendar
                             ref={calendar_ref}
@@ -254,6 +258,26 @@ DatePicker.propTypes = {
     error_messages: PropTypes.array,
     label: PropTypes.string,
     is_alignment_top: PropTypes.bool,
+    date_format: PropTypes.string,
+    disabled: PropTypes.bool,
+    mode: PropTypes.string,
+    max_date: PropTypes.string,
+    min_date: PropTypes.string,
+    name: PropTypes.string,
+    onFocus: PropTypes.func,
+    portal_id: PropTypes.string,
+    placeholder: PropTypes.string,
+    required: PropTypes.string,
+    type: PropTypes.string,
+    value: PropTypes.string,
+    data_testid: PropTypes.string,
+    display_format: PropTypes.string,
+    error: PropTypes.string,
+    footer: PropTypes.node,
+    id: PropTypes.string,
+    has_range_selection: PropTypes.bool,
+    onBlur: PropTypes.func,
+    onChange: PropTypes.func,
 };
 
 export default DatePicker;

@@ -59,6 +59,7 @@ const DefaultHeader = ({
     toggleAccountsDialog,
     toggleNotifications,
     changeCurrentLanguage,
+    is_social_signup,
 }) => {
     const toggle_menu_drawer_ref = React.useRef(null);
     const addUpdateNotification = () => addNotificationMessage(client_notifications.new_version_available);
@@ -133,6 +134,7 @@ const DefaultHeader = ({
                                     toggleDrawer={toggle_menu_drawer_ref.current?.toggleDrawer}
                                 />
                             }
+                            is_social_signup={is_social_signup}
                         />
                         {header_extension && is_logged_in && (
                             <div className='header__menu-left-extensions'>{header_extension}</div>
@@ -229,6 +231,16 @@ DefaultHeader.propTypes = {
     setDarkMode: PropTypes.func,
     toggleAccountsDialog: PropTypes.func,
     toggleNotifications: PropTypes.func,
+    is_social_signup: PropTypes.bool,
+    country_standpoint: PropTypes.object,
+    history: PropTypes.object,
+    is_onramp_tab_visible: PropTypes.bool,
+    is_p2p_enabled: PropTypes.bool,
+    is_payment_agent_transfer_visible: PropTypes.bool,
+    is_payment_agent_visible: PropTypes.bool,
+    location: PropTypes.object,
+    menu_items: PropTypes.array,
+    changeCurrentLanguage: PropTypes.func,
 };
 
 export default connect(({ client, common, ui, menu, modules, notifications }) => ({
@@ -275,4 +287,5 @@ export default connect(({ client, common, ui, menu, modules, notifications }) =>
     setDarkMode: ui.setDarkMode,
     toggleAccountsDialog: ui.toggleAccountsDialog,
     toggleNotifications: notifications.toggleNotificationsModal,
+    is_social_signup: client.is_social_signup,
 }))(withRouter(DefaultHeader));

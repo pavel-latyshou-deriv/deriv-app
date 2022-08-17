@@ -1,16 +1,16 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React from 'react';
 import { WS } from '@deriv/shared';
-import CountrySelector from 'Components/poi-country-selector';
-import IdvDocumentSubmit from 'Components/poi-idv-document-submit';
-import IdvUploadComplete from 'Components/poi-idv-submit-complete';
-import Unsupported from 'Components/poi-unsupported';
-import UploadComplete from 'Components/poi-upload-complete';
+import CountrySelector from 'Components/poi/poi-country-selector';
+import IdvDocumentSubmit from 'Components/poi/idv-document-submit';
+import IdvUploadComplete from 'Components/poi/idv-status/idv-submit-complete';
+import Unsupported from 'Components/poi/status/unsupported';
+import UploadComplete from 'Components/poi/status/upload-complete';
 import OnfidoUpload from './onfido-sdk-view.jsx';
 import { identity_status_codes, submission_status_code, service_code } from './proof-of-identity-utils';
 
 const POISubmission = ({
     allow_poi_resubmission,
-    has_attempted_idv,
     has_require_submission,
     height,
     identity_last_attempt,
@@ -23,6 +23,7 @@ const POISubmission = ({
     redirect_button,
     refreshNotifications,
     residence_list,
+    setIsCfdPoiCompleted,
 }) => {
     const [submission_status, setSubmissionStatus] = React.useState(); // selecting, submitting, complete
     const [submission_service, setSubmissionService] = React.useState();
@@ -33,7 +34,8 @@ const POISubmission = ({
             const { submissions_left: idv_submissions_left } = idv;
             const { submissions_left: onfido_submissions_left } = onfido;
             const is_idv_supported = selected_country.identity.services.idv.is_country_supported;
-            const is_onfido_supported = selected_country.identity.services.onfido.is_country_supported;
+            const is_onfido_supported =
+                selected_country.identity.services.onfido.is_country_supported && selected_country.value !== 'ng';
 
             if (is_idv_supported && Number(idv_submissions_left) > 0 && !is_idv_disallowed) {
                 setSubmissionService(service_code.idv);
@@ -65,36 +67,39 @@ const POISubmission = ({
     );
 
     React.useEffect(() => {
-        if ((has_require_submission || allow_poi_resubmission) && identity_last_attempt) {
-            switch (identity_last_attempt.service) {
-                case service_code.idv: {
-                    if (Number(idv.submissions_left) > 0 || Number(onfido.submissions_left) > 0) {
-                        setSubmissionStatus(submission_status_code.selecting);
-                    } else {
-                        setSubmissionService(service_code.manual);
+        if (submission_status !== submission_status_code.complete) {
+            if ((has_require_submission || allow_poi_resubmission) && identity_last_attempt) {
+                switch (identity_last_attempt.service) {
+                    case service_code.idv: {
+                        if (Number(idv.submissions_left) > 0 || Number(onfido.submissions_left) > 0) {
+                            setSubmissionStatus(submission_status_code.selecting);
+                        } else {
+                            setSubmissionService(service_code.manual);
+                            setSubmissionStatus(submission_status_code.submitting);
+                        }
+                        break;
+                    }
+                    case service_code.onfido: {
+                        if (Number(onfido.submissions_left) > 0) {
+                            setSubmissionStatus(submission_status_code.selecting);
+                        } else {
+                            setSubmissionService(service_code.manual);
+                            setSubmissionStatus(submission_status_code.submitting);
+                        }
+                        break;
+                    }
+                    case service_code.manual: {
+                        setSelectedCountry(getCountryFromResidence(identity_last_attempt.country_code));
                         setSubmissionStatus(submission_status_code.submitting);
-                    }
-                    break;
-                }
-                case service_code.onfido: {
-                    if (Number(onfido.submissions_left) > 0) {
-                        setSubmissionStatus(submission_status_code.selecting);
-                    } else {
                         setSubmissionService(service_code.manual);
+                        break;
                     }
-                    break;
+                    default:
+                        break;
                 }
-                case service_code.manual: {
-                    setSelectedCountry(getCountryFromResidence(identity_last_attempt.country_code));
-                    setSubmissionStatus(submission_status_code.submitting);
-                    setSubmissionService(service_code.manual);
-                    break;
-                }
-                default:
-                    break;
+            } else {
+                setSubmissionStatus(submission_status_code.selecting);
             }
-        } else {
-            setSubmissionStatus(submission_status_code.selecting);
         }
     }, [
         allow_poi_resubmission,
@@ -107,11 +112,9 @@ const POISubmission = ({
 
     switch (submission_status) {
         case submission_status_code.selecting: {
-            const show_helper_msg = has_attempted_idv && Number(idv.submissions_left) > 0;
             return (
                 <CountrySelector
                     handleSelectionNext={handleSelectionNext}
-                    show_helper_msg={show_helper_msg}
                     is_from_external={is_from_external}
                     residence_list={residence_list}
                     selected_country={selected_country}
@@ -142,11 +145,18 @@ const POISubmission = ({
                             height={height}
                             is_from_external={is_from_external}
                             refreshNotifications={refreshNotifications}
+                            OnfidoUpload
                         />
                     );
                 }
                 case service_code.manual:
-                    return <Unsupported />;
+                    return (
+                        <Unsupported
+                            country_code={selected_country.value}
+                            is_from_external={is_from_external}
+                            setIsCfdPoiCompleted={setIsCfdPoiCompleted}
+                        />
+                    );
                 default:
                     return null;
             }

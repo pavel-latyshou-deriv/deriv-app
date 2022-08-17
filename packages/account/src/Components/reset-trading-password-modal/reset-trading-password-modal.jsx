@@ -159,14 +159,7 @@ const ResetTradingPassword = ({ setDialogTitleFunc, toggleResetTradingPasswordMo
                                         </PasswordMeter>
                                     </fieldset>
                                     <Text as='p' size='xs' className='reset-trading-password__hint'>
-                                        {status.error_msg ? (
-                                            <Localize
-                                                i18n_default_text='{{error_msg}}'
-                                                values={{ error_msg: status.error_msg }}
-                                            />
-                                        ) : (
-                                            <Localize i18n_default_text='Strong passwords contain at least 8 characters that include uppercase and lowercase letters, numbers, and symbols.' />
-                                        )}
+                                        <Localize i18n_default_text='Strong passwords contain at least 8 characters that include uppercase and lowercase letters, numbers, and symbols.' />
                                     </Text>
                                     <FormSubmitButton
                                         is_disabled={!values.password || !!errors.password || isSubmitting}
@@ -206,7 +199,7 @@ const ResetTradingPasswordModal = ({
     const [dialog_title, setDialogTitle] = React.useState('');
     const history = useHistory();
     React.useEffect(() => {
-        if (is_visible) {
+        if (is_visible && history.location.search !== '') {
             history.replace({
                 search: '',
                 hash: location.hash,

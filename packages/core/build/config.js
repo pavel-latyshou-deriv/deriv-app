@@ -2,6 +2,7 @@ const path = require('path');
 const stylelintFormatter = require('stylelint-formatter-pretty');
 const { transformContentUrlBase } = require('./helpers');
 const { GitRevisionPlugin } = require('git-revision-webpack-plugin');
+
 const gitRevisionPlugin = new GitRevisionPlugin();
 
 const copyConfig = base => {
@@ -50,6 +51,18 @@ const copyConfig = base => {
             to: 'trader',
         },
         {
+            from: path.resolve(__dirname, '../node_modules/@deriv/reports/dist/reports/js/'),
+            to: 'reports/js',
+        },
+        {
+            from: path.resolve(__dirname, '../node_modules/@deriv/reports/dist/reports/css/'),
+            to: 'reports/css',
+        },
+        {
+            from: path.resolve(__dirname, '../node_modules/@deriv/cfd/dist/cfd'),
+            to: 'cfd',
+        },
+        {
             from: path.resolve(__dirname, '../node_modules/@deriv/appstore/dist/appstore'),
             to: 'appstore',
         },
@@ -87,7 +100,7 @@ const copyConfig = base => {
             to: 'favicon.ico',
             toType: 'file',
         },
-        { from: path.resolve(__dirname, '../src/public/images/favicons/'), to: 'public/images/favicons' },
+        { from: path.resolve(__dirname, '../src/public/images/favicons/'), to: 'public/images/favicons/' },
         {
             from: path.resolve(__dirname, '../src/public/images/common/static_images/'),
             to: 'public/images/common',
@@ -123,25 +136,64 @@ const copyConfig = base => {
 
 const generateSWConfig = is_release => ({
     cleanupOutdatedCaches: true,
-    exclude: [
-        /CNAME$/,
-        /index\.html$/,
-        /404\.html$/,
-        /^localstorage-sync\.html$/,
-        /\.map$/,
-        /sitemap\.xml$/,
-        /robots\.txt$/,
-        /manifest\.json$/,
-        /^apple-app-site-association/,
-        /^assetlinks.json/,
-        /^.well-known\//,
-        /^account\//,
-        /^js\/smartcharts\//,
-        /^bot\//,
-        /^media\//,
-        /^trader\//,
-        /^cashier\//,
-        /^js\/core\.[a-z_]*-json\./,
+    exclude: [/\**/],
+    runtimeCaching: [
+        {
+            urlPattern: /public\/(images|sprites)\/(?!.*favicons).*$/,
+            handler: 'CacheFirst',
+            options: {
+                cacheName: 'assets',
+                expiration: {
+                    maxAgeSeconds: 60 * 60 * 24,
+                },
+            },
+        },
+        {
+            urlPattern: ({ url }) => {
+                return url.pathname.match(/^\/js\/(?!(.*((core\.[a-z_]*-json\.)|smartcharts))).*$/);
+            },
+            handler: 'CacheFirst',
+            options: {
+                cacheName: 'core-js-files',
+                expiration: {
+                    maxAgeSeconds: 60 * 60 * 24,
+                },
+            },
+        },
+        {
+            urlPattern: ({ url }) => {
+                return url.pathname.match(/^\/js\/smartcharts\//);
+            },
+            handler: 'CacheFirst',
+            options: {
+                cacheName: 'smartchart-files',
+                expiration: {
+                    maxAgeSeconds: 60 * 60 * 24,
+                },
+            },
+        },
+        {
+            urlPattern: ({ url }) => {
+                return url.pathname.match(/^\/css\//);
+            },
+            handler: 'CacheFirst',
+            options: {
+                cacheName: 'core-css-files',
+                expiration: {
+                    maxAgeSeconds: 60 * 60 * 24,
+                },
+            },
+        },
+        {
+            urlPattern: /(account|appstore|bot|cashier|cfd|trader|reports)\//,
+            handler: 'CacheFirst',
+            options: {
+                cacheName: 'packages-files',
+                expiration: {
+                    maxAgeSeconds: 60 * 60 * 24,
+                },
+            },
+        },
     ],
     skipWaiting: true,
     clientsClaim: true,
@@ -177,16 +229,37 @@ const htmlInjectConfig = () => ({
             path: 'manifest.json',
             attributes: {
                 rel: 'manifest',
+                crossorigin: 'use-credentials',
             },
         },
         {
-            path: 'public/images/favicons',
-            glob: '*',
-            globPath: path.resolve(__dirname, '../src/public/images/favicons'),
+            path: 'favicon.ico',
             attributes: {
                 rel: 'icon',
             },
         },
+        ...[
+            { name: 'favicon', rel: 'icon', size: '16' },
+            { name: 'favicon', rel: 'icon', size: '32' },
+            { name: 'favicon', rel: 'icon', size: '96' },
+            { name: 'favicon', rel: 'icon', size: '160' },
+            { name: 'favicon', rel: 'icon', size: '192' },
+            { name: 'apple-touch-icon', size: '57' },
+            { name: 'apple-touch-icon', size: '60' },
+            { name: 'apple-touch-icon', size: '72' },
+            { name: 'apple-touch-icon', size: '76' },
+            { name: 'apple-touch-icon', size: '114' },
+            { name: 'apple-touch-icon', size: '120' },
+            { name: 'apple-touch-icon', size: '144' },
+            { name: 'apple-touch-icon', size: '152' },
+            { name: 'apple-touch-icon', size: '180' },
+        ].map(({ name, rel, size }) => ({
+            path: `public/images/favicons/${name}-${size}.png`,
+            attributes: {
+                rel: rel || name,
+                sizes: `${size}x${size}`,
+            },
+        })),
     ],
     append: false,
 });

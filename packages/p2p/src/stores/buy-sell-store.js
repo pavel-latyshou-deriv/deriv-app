@@ -1,16 +1,18 @@
 import { action, computed, observable, reaction } from 'mobx';
-import { formatMoney, getDecimalPlaces, getRoundedNumber, isMobile } from '@deriv/shared';
+import { formatMoney, getDecimalPlaces, isMobile } from '@deriv/shared';
 import { localize } from 'Components/i18next';
 import { buy_sell } from 'Constants/buy-sell';
 import { requestWS } from 'Utils/websocket';
 import { textValidator, lengthValidator } from 'Utils/validations';
 import { countDecimalPlaces } from 'Utils/string';
+import { removeTrailingZeros } from 'Utils/format-value';
 import BaseStore from 'Stores/base_store';
 
 export default class BuySellStore extends BaseStore {
     @observable api_error_message = '';
     @observable contact_info = '';
     @observable error_message = '';
+    @observable form_error_code = '';
     @observable has_more_items_to_load = false;
     @observable has_payment_methods = false;
     @observable is_filter_modal_loading = false;
@@ -24,12 +26,15 @@ export default class BuySellStore extends BaseStore {
     @observable search_results = [];
     @observable search_term = '';
     @observable selected_ad_state = {};
+    @observable selected_payment_method_value = [];
+    @observable selected_payment_method_text = [];
     @observable selected_value = 'rate';
     @observable should_show_popup = false;
     @observable should_show_verification = false;
     @observable should_use_client_limits = false;
     @observable show_advertiser_page = false;
     @observable show_filter_payment_methods = false;
+    @observable show_rate_change_popup = false;
     @observable sort_by = 'rate';
     @observable submitForm = () => {};
     @observable table_type = buy_sell.BUY;
@@ -42,10 +47,14 @@ export default class BuySellStore extends BaseStore {
     };
     filter_payment_methods = [];
     payment_method_ids = [];
-    sort_list = [
-        { text: localize('Exchange rate (Default)'), value: 'rate' },
-        { text: localize('Completion rate'), value: 'completion' },
-    ];
+
+    // eslint-disable-next-line class-methods-use-this
+    get sort_list() {
+        return [
+            { text: localize('Exchange rate (Default)'), value: 'rate' },
+            { text: localize('Completion rate'), value: 'completion' },
+        ];
+    }
 
     @computed
     get account_currency() {
@@ -113,8 +122,17 @@ export default class BuySellStore extends BaseStore {
     @computed
     get should_filter_by_payment_method() {
         const { my_profile_store } = this.root_store;
+        return my_profile_store.payment_methods_list_values !== this.selected_payment_method_value;
+    }
 
-        return my_profile_store.payment_methods_list_values !== this.filter_payment_methods;
+    @action.bound
+    fetchAdvertiserAdverts() {
+        this.setItems([]);
+        this.setIsLoading(true);
+        this.loadMoreItems({ startIndex: 0 });
+        if (!this.is_buy) {
+            this.root_store.my_profile_store.getAdvertiserPaymentMethods();
+        }
     }
 
     @action.bound
@@ -123,13 +141,15 @@ export default class BuySellStore extends BaseStore {
             p2p_advertiser_info: 1,
         }).then(response => {
             // Added a check to prevent console errors
-            if (response && !response.error) {
-                const { p2p_advertiser_info } = response;
-                this.setContactInfo(p2p_advertiser_info.contact_info);
-                this.setPaymentInfo(p2p_advertiser_info.payment_info);
-            } else {
-                this.setContactInfo('');
-                this.setPaymentInfo('');
+            if (response) {
+                if (!response.error) {
+                    const { p2p_advertiser_info } = response;
+                    this.setContactInfo(p2p_advertiser_info.contact_info);
+                    this.setPaymentInfo(p2p_advertiser_info.payment_info);
+                } else {
+                    this.setContactInfo('');
+                    this.setPaymentInfo('');
+                }
             }
         });
     }
@@ -152,7 +172,7 @@ export default class BuySellStore extends BaseStore {
 
         this.form_props.setErrorMessage(null);
 
-        const order = await requestWS({
+        const payload = {
             p2p_order_create: 1,
             advert_id: this.advert.id,
             amount: values.amount,
@@ -164,11 +184,20 @@ export default class BuySellStore extends BaseStore {
                       contact_info: values.contact_info,
                   }
                 : {}),
-        });
+        };
+        if (values.rate !== null) {
+            payload.rate = values.rate;
+        }
+
+        const order = await requestWS({ ...payload });
 
         if (order.error) {
             this.form_props.setErrorMessage(order.error.message);
+            this.setFormErrorCode(order.error.code);
         } else {
+            this.form_props.setErrorMessage(null);
+            this.setShowRateChangePopup(false);
+            this.root_store.floating_rate_store.setIsMarketRateChanged(false);
             const response = await requestWS({ p2p_order_info: 1, id: order.p2p_order_create.id });
             this.form_props.handleConfirm(response.p2p_order_info);
             this.form_props.handleClose();
@@ -203,58 +232,61 @@ export default class BuySellStore extends BaseStore {
                 limit: general_store.list_item_limit,
                 sort_by: this.sort_by,
                 use_client_limits: this.should_use_client_limits ? 1 : 0,
-                ...(this.filter_payment_methods.length > 0 ? { payment_method: this.filter_payment_methods } : {}),
+                ...(this.selected_payment_method_value.length > 0
+                    ? { payment_method: this.selected_payment_method_value }
+                    : {}),
             }).then(response => {
-                if (response && !response.error) {
-                    // Ignore any responses that don't match our request. This can happen
-                    // due to quickly switching between Buy/Sell tabs.
-                    if (response.echo_req.counterparty_type === counterparty_type) {
-                        const { list } = response.p2p_advert_list;
+                if (response) {
+                    if (!response.error) {
+                        // Ignore any responses that don't match our request. This can happen
+                        // due to quickly switching between Buy/Sell tabs.
+                        if (response.echo_req.counterparty_type === counterparty_type) {
+                            const { list } = response.p2p_advert_list;
 
-                        this.setHasMoreItemsToLoad(list.length >= general_store.list_item_limit);
+                            this.setHasMoreItemsToLoad(list.length >= general_store.list_item_limit);
 
-                        const old_items = [...this.items];
-                        const new_items = [];
+                            const old_items = [...this.items];
+                            const new_items = [];
 
-                        list.forEach(new_item => {
-                            const old_item_idx = old_items.findIndex(old_item => old_item.id === new_item.id);
+                            list.forEach(new_item => {
+                                const old_item_idx = old_items.findIndex(old_item => old_item.id === new_item.id);
 
-                            if (old_item_idx > -1) {
-                                old_items[old_item_idx] = new_item;
-                            } else {
-                                new_items.push(new_item);
-                            }
-                        });
-
-                        this.setItems([...old_items, ...new_items]);
-
-                        const search_results = [];
-
-                        if (this.search_term) {
-                            this.items.forEach(item => {
-                                if (
-                                    item.advertiser_details.name
-                                        .toLowerCase()
-                                        .includes(this.search_term.toLowerCase().trim())
-                                ) {
-                                    search_results.push(item);
+                                if (old_item_idx > -1) {
+                                    old_items[old_item_idx] = new_item;
+                                } else {
+                                    new_items.push(new_item);
                                 }
                             });
-                        }
 
-                        if (search_results.length) {
-                            this.setSearchResults(search_results);
-                        } else {
-                            this.setSearchResults([]);
+                            this.setItems([...old_items, ...new_items]);
+
+                            const search_results = [];
+
+                            if (this.search_term) {
+                                this.items.forEach(item => {
+                                    if (
+                                        item.advertiser_details.name
+                                            .toLowerCase()
+                                            .includes(this.search_term.toLowerCase().trim())
+                                    ) {
+                                        search_results.push(item);
+                                    }
+                                });
+                            }
+
+                            if (search_results.length) {
+                                this.setSearchResults(search_results);
+                            } else {
+                                this.setSearchResults([]);
+                            }
                         }
+                        // Added a check to prevent console errors
+                    } else if (response && response.error.code === 'PermissionDenied') {
+                        this.root_store.general_store.setIsBlocked(true);
+                    } else {
+                        this.setApiErrorMessage(response?.error.message);
                     }
-                    // Added a check to prevent console errors
-                } else if (response && response.error.code === 'PermissionDenied') {
-                    this.root_store.general_store.setIsBlocked(true);
-                } else {
-                    this.setApiErrorMessage(response?.error.message);
                 }
-
                 this.setIsLoading(false);
                 resolve();
             });
@@ -272,7 +304,9 @@ export default class BuySellStore extends BaseStore {
     }
 
     @action.bound
-    onClickApply() {
+    onClickApply(payment_method_value, payment_method_text) {
+        this.setSelectedPaymentMethodValue(payment_method_value);
+        this.setSelectedPaymentMethodText(payment_method_text);
         this.setItems([]);
         this.setIsLoading(true);
         this.loadMoreItems({ startIndex: 0 });
@@ -320,6 +354,11 @@ export default class BuySellStore extends BaseStore {
     @action.bound
     setErrorMessage(error_message) {
         this.error_message = error_message;
+    }
+
+    @action.bound
+    setFormErrorCode(form_error_code) {
+        this.form_error_code = form_error_code;
     }
 
     @action.bound
@@ -373,11 +412,8 @@ export default class BuySellStore extends BaseStore {
     }
 
     @action.bound
-    setInitialReceiveAmount() {
-        this.receive_amount = getRoundedNumber(
-            this.advert.min_order_amount_limit * this.advert.price,
-            this.advert.local_currency
-        );
+    setInitialReceiveAmount(initial_price) {
+        this.receive_amount = removeTrailingZeros(this.advert.min_order_amount_limit * initial_price);
     }
 
     @action.bound
@@ -401,6 +437,16 @@ export default class BuySellStore extends BaseStore {
     }
 
     @action.bound
+    setSelectedPaymentMethodValue(payment_method_value) {
+        this.selected_payment_method_value = [...payment_method_value];
+    }
+
+    @action.bound
+    setSelectedPaymentMethodText(payment_method_text) {
+        this.selected_payment_method_text = [...payment_method_text];
+    }
+
+    @action.bound
     setSelectedValue(selected_value) {
         this.selected_value = selected_value;
     }
@@ -408,6 +454,9 @@ export default class BuySellStore extends BaseStore {
     @action.bound
     setShouldShowPopup(should_show_popup) {
         this.should_show_popup = should_show_popup;
+        if (!this.should_show_popup) {
+            this.fetchAdvertiserAdverts();
+        }
     }
 
     @action.bound
@@ -466,6 +515,11 @@ export default class BuySellStore extends BaseStore {
     }
 
     @action.bound
+    setShowRateChangePopup(show_rate_change_popup) {
+        this.show_rate_change_popup = show_rate_change_popup;
+    }
+
+    @action.bound
     showVerification() {
         this.setShouldShowVerification(true);
     }
@@ -477,6 +531,7 @@ export default class BuySellStore extends BaseStore {
                 v => !!v,
                 v => v >= this.advert.min_order_amount_limit,
                 v => v <= this.advert.max_order_amount_limit,
+                v => (this.root_store.buy_sell_store.is_buy_advert ? true : v <= this.root_store.general_store.balance),
                 v => countDecimalPlaces(v) <= getDecimalPlaces(this.account_currency),
             ],
         };
@@ -500,6 +555,10 @@ export default class BuySellStore extends BaseStore {
             localize('Maximum is {{value}} {{currency}}', {
                 currency: this.account_currency,
                 value: display_max_amount,
+            }),
+            localize('Maximum is {{value}} {{currency}}', {
+                currency: this.account_currency,
+                value: formatMoney(this.account_currency, this.root_store.general_store.balance, true),
             }),
             localize('Enter a valid amount'),
         ];
@@ -554,7 +613,7 @@ export default class BuySellStore extends BaseStore {
                         requestWS({ p2p_advert_info: 1, id: this.selected_ad_state.id, use_client_limits: 1 }).then(
                             response => {
                                 // Added a check to prevent console errors
-                                if (response && response.error) return;
+                                if (response?.error) return;
                                 const { p2p_advert_info } = response;
 
                                 if (this.selected_ad_state?.id === p2p_advert_info.id) {
